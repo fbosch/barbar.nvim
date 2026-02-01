@@ -15,12 +15,14 @@ local bufname = vim.fn.bufname --- @type function
 local command = vim.api.nvim_command --- @type function
 local fnamemodify = vim.fn.fnamemodify --- @type function
 local get_current_buf = vim.api.nvim_get_current_buf --- @type function
-local get_diagnostics = vim.diagnostic.get --- @type fun(bufnr: integer): {severity: integer}[]
+local function get_diagnostics(bufnr)
+  return vim.diagnostic.get(bufnr)
+end
 local json_decode = vim.json.decode --- @type function
 local json_encode = vim.json.encode --- @type function
 local list_bufs = vim.api.nvim_list_bufs --- @type function
 local list_slice = vim.list_slice
-local severity = vim.diagnostic.severity
+local severity = { 1, 2, 3, 4 }
 local tbl_contains = vim.tbl_contains
 local tbl_filter = vim.tbl_filter
 local tbl_map = vim.tbl_map
@@ -35,10 +37,10 @@ local layout = require('barbar.ui.layout')
 local ANIMATION = require('barbar.constants').ANIMATION
 
 local CACHE_PATH = vim.fn.stdpath('cache') .. '/barbar.json'
-local ERROR = severity.ERROR
-local HINT = severity.HINT
-local INFO = severity.INFO
-local WARN = severity.WARN
+local ERROR = 1
+local WARN = 2
+local INFO = 3
+local HINT = 4
 
 --------------------------------
 -- Section: Application state --

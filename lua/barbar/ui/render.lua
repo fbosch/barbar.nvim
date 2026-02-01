@@ -16,7 +16,12 @@ local list_tabpages = vim.api.nvim_list_tabpages --- @type function
 local list_wins = vim.api.nvim_list_wins --- @type function
 local set_current_win = vim.api.nvim_set_current_win --- @type function
 local set_option = vim.api.nvim_set_option --- @type function
-local severity = vim.diagnostic.severity
+local severity = {
+  [1] = 'ERROR',
+  [2] = 'WARN',
+  [3] = 'INFO',
+  [4] = 'HINT',
+}
 local strcharpart = vim.fn.strcharpart --- @type function
 local strwidth = vim.api.nvim_strwidth --- @type function
 local tabpagenr = vim.fn.tabpagenr --- @type function
