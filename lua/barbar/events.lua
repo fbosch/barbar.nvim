@@ -37,6 +37,11 @@ local render_update_pending = false
 local render_update_names = false
 local render_update_refocus = nil
 
+local pending_diagnostics = {}
+local pending_gitsigns = {}
+local diagnostic_timer = nil
+local gitsigns_timer = nil
+
 local function schedule_render_update(update_names, refocus)
   if update_names then
     render_update_names = true
@@ -57,6 +62,42 @@ local function schedule_render_update(update_names, refocus)
     render_update_refocus = nil
     render.update(names, refocus_arg)
   end)
+end
+
+local function flush_diagnostics()
+  diagnostic_timer = nil
+  for bufnr in pairs(pending_diagnostics) do
+    if vim.api.nvim_buf_is_loaded(bufnr) then
+      state.update_diagnostics(bufnr)
+    end
+    pending_diagnostics[bufnr] = nil
+  end
+  schedule_render_update()
+end
+
+local function schedule_diagnostics_update(bufnr)
+  pending_diagnostics[bufnr] = true
+  if diagnostic_timer then
+    return
+  end
+  diagnostic_timer = vim.defer_fn(flush_diagnostics, 60)
+end
+
+local function flush_gitsigns()
+  gitsigns_timer = nil
+  for bufnr in pairs(pending_gitsigns) do
+    state.update_gitsigns(bufnr)
+    pending_gitsigns[bufnr] = nil
+  end
+  schedule_render_update()
+end
+
+local function schedule_gitsigns_update(bufnr)
+  pending_gitsigns[bufnr] = true
+  if gitsigns_timer then
+    return
+  end
+  gitsigns_timer = vim.defer_fn(flush_gitsigns, 80)
 end
 
 --- The `<mods>` used for the close click handler
@@ -245,10 +286,7 @@ function events.enable()
 
   create_autocmd('DiagnosticChanged', {
     callback = function(event)
-      if vim.api.nvim_buf_is_loaded(event.buf) then
-        state.update_diagnostics(event.buf)
-        schedule_render_update()
-      end
+      schedule_diagnostics_update(event.buf)
     end,
     group = augroup_render,
   })
@@ -262,8 +300,7 @@ function events.enable()
         bufnr = event.data.buffer
       end
 
-      state.update_gitsigns(bufnr)
-      schedule_render_update()
+      schedule_gitsigns_update(bufnr)
     end),
     group = augroup_render,
     pattern = 'GitSignsUpdate',
