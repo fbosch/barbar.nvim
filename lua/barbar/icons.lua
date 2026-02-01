@@ -37,6 +37,9 @@ end
 --- @type barbar.icons.group[]
 local hl_groups = {}
 
+--- @type {[integer]: {name: string, filetype: string, icon_char: string, icon_hl: string}}
+local icon_cache = {}
+
 --- @class barbar.Icons
 local icons = {}
 
@@ -45,8 +48,20 @@ icons.get_icon = ok and
   --- @param buffer_activity barbar.buffer.activity.name
   --- @return string icon, string highlight_group
   function(bufnr, buffer_activity)
-    local basename, extension = '', ''
+    local name = buf_get_name(bufnr)
     local filetype = buf_get_option(bufnr, 'filetype')
+    local cached = icon_cache[bufnr]
+    if cached and cached.name == name and cached.filetype == filetype then
+      local icon_char = cached.icon_char
+      local icon_hl = cached.icon_hl
+      if icon_hl and hlexists(icon_hl .. buffer_activity) < 1 then
+        hl_buffer_icon(buffer_activity, icon_hl)
+        table_insert(hl_groups, {buffer_status = buffer_activity, icon_hl = icon_hl})
+      end
+      return icon_char, icon_hl .. buffer_activity
+    end
+
+    local basename, extension = '', ''
     local icon_char, icon_hl = '', 'Buffer'
 
     -- nvim-web-devicon only handles filetype icons, not other types (eg directory)
@@ -57,7 +72,7 @@ icons.get_icon = ok and
       if filetype == 'fugitive' or filetype == 'gitcommit' then
         basename, extension = 'git', 'git'
       else
-        basename = fnamemodify(buf_get_name(bufnr), ':t')
+        basename = fnamemodify(name, ':t')
         extension = fnamemodify(basename, ':e')
       end
 
@@ -71,6 +86,13 @@ icons.get_icon = ok and
       hl_buffer_icon(buffer_activity, icon_hl)
       table_insert(hl_groups, {buffer_status = buffer_activity, icon_hl = icon_hl})
     end
+
+    icon_cache[bufnr] = {
+      name = name,
+      filetype = filetype,
+      icon_char = icon_char,
+      icon_hl = icon_hl,
+    }
 
     return icon_char, icon_hl .. buffer_activity
   end or

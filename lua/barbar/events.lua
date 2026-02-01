@@ -33,6 +33,32 @@ local layout = require('barbar.ui.layout')
 local render = require('barbar.ui.render')
 local state = require('barbar.state')
 
+local render_update_pending = false
+local render_update_names = false
+local render_update_refocus = nil
+
+local function schedule_render_update(update_names, refocus)
+  if update_names then
+    render_update_names = true
+  end
+  if refocus == false then
+    render_update_refocus = false
+  end
+  if render_update_pending then
+    return
+  end
+
+  render_update_pending = true
+  vim.schedule(function()
+    render_update_pending = false
+    local names = render_update_names
+    local refocus_arg = render_update_refocus
+    render_update_names = false
+    render_update_refocus = nil
+    render.update(names, refocus_arg)
+  end)
+end
+
 --- The `<mods>` used for the close click handler
 local CLOSE_CLICK_MODS = vim.api.nvim_cmd and { confirm = true } or 'confirm'
 
@@ -178,7 +204,7 @@ function events.enable()
     callback = schedule_wrap(function(tbl)
       jump_mode.unassign_letter_for(tbl.buf)
       state.push_recently_closed(tbl.file)
-      render.update()
+      schedule_render_update()
     end),
     group = augroup_render,
   })
@@ -193,14 +219,14 @@ function events.enable()
       local is_modified = buf_get_option(tbl.buf, 'modified')
       if is_modified ~= vim.b[tbl.buf].checked then
         buf_set_var(tbl.buf, 'checked', is_modified)
-        render.update()
+        schedule_render_update()
       end
     end,
     group = augroup_render,
   })
 
   create_autocmd({'BufEnter', 'BufNew'}, {
-    callback = function() render.update(true) end,
+    callback = function() schedule_render_update() end,
     group = augroup_render,
   })
 
@@ -212,7 +238,7 @@ function events.enable()
       'WinEnter', 'WinLeave',
     },
     {
-      callback = vim.schedule_wrap(function () render.update() end),
+      callback = vim.schedule_wrap(function() schedule_render_update() end),
       group = augroup_render,
     }
   )
@@ -221,7 +247,7 @@ function events.enable()
     callback = function(event)
       if vim.api.nvim_buf_is_loaded(event.buf) then
         state.update_diagnostics(event.buf)
-        render.update()
+        schedule_render_update()
       end
     end,
     group = augroup_render,
@@ -237,7 +263,7 @@ function events.enable()
       end
 
       state.update_gitsigns(bufnr)
-      render.update()
+      schedule_render_update()
     end),
     group = augroup_render,
     pattern = 'GitSignsUpdate',
@@ -334,7 +360,7 @@ function events.enable()
   end
 
   create_autocmd('OptionSet', {
-    callback = function() render.update() end,
+    callback = function() schedule_render_update() end,
     group = augroup_render,
     pattern = 'buflisted',
   })
@@ -350,18 +376,18 @@ function events.enable()
       local restore_cmd = vim.g.Bufferline__session_restore
       if restore_cmd then command(restore_cmd) end
 
-      render.update(true)
+      schedule_render_update(true)
     end),
     group = augroup_render,
   })
 
   create_autocmd('TermOpen', {
-    callback = function() defer_fn(function() render.update(true) end, 500) end,
+    callback = function() defer_fn(function() schedule_render_update(true) end, 500) end,
     group = augroup_render,
   })
 
   create_autocmd('TermClose', {
-    callback = function() render.update(true) end,
+    callback = function() schedule_render_update(true) end,
     group = augroup_render,
   })
 
@@ -400,7 +426,7 @@ function events.enable()
   })
 
   create_autocmd('WinClosed', {
-    callback = schedule_wrap(render.update),
+    callback = schedule_wrap(function() schedule_render_update() end),
     group = augroup_render,
   })
 
@@ -472,7 +498,7 @@ function events.on_option_changed(user_config)
 
   -- Don't jump-start barbar if it is disabled
   if enabled then
-    render.update(true)
+    schedule_render_update(true)
   end
 end
 
