@@ -12,6 +12,7 @@ local create_namespace = vim.api.nvim_create_namespace
 local defer_fn = vim.defer_fn
 local del_autocmd = vim.api.nvim_del_autocmd --- @type function
 local exec_autocmds = vim.api.nvim_exec_autocmds --- @type function
+local get_current_buf = vim.api.nvim_get_current_buf --- @type function
 local get_current_tabpage = vim.api.nvim_get_current_tabpage
 local get_option = vim.api.nvim_get_option --- @type function
 local islist = vim.islist or vim.tbl_islist --- @type function
@@ -36,6 +37,7 @@ local state = require('barbar.state')
 local render_update_pending = false
 local render_update_names = false
 local render_update_refocus = nil
+local last_render_buf = nil
 
 local pending_diagnostics = {}
 local pending_gitsigns = {}
@@ -62,6 +64,46 @@ local function schedule_render_update(update_names, refocus)
     render_update_refocus = nil
     render.update(names, refocus_arg)
   end)
+end
+
+local function schedule_render_if_buf_changed()
+  local current = get_current_buf()
+  if last_render_buf == current then
+    return
+  end
+
+  last_render_buf = current
+  schedule_render_update()
+end
+
+local function diagnostics_enabled()
+  local diagnostics = config.options.icons.diagnostics
+  if diagnostics == nil then
+    return false
+  end
+
+  for _, option in pairs(diagnostics) do
+    if option and option.enabled then
+      return true
+    end
+  end
+
+  return false
+end
+
+local function gitsigns_enabled()
+  local gitsigns = config.options.icons.gitsigns
+  if gitsigns == nil then
+    return false
+  end
+
+  for _, option in pairs(gitsigns) do
+    if option and option.enabled then
+      return true
+    end
+  end
+
+  return false
 end
 
 local function flush_diagnostics()
@@ -234,8 +276,12 @@ function events.enable()
     callback = vim.schedule_wrap(function(event)
       if buf_is_valid(event.buf) then
         jump_mode.assign_next_letter(event.buf)
-        state.update_diagnostics(event.buf)
-        state.update_gitsigns(event.buf)
+        if diagnostics_enabled() then
+          state.update_diagnostics(event.buf)
+        end
+        if gitsigns_enabled() then
+          state.update_gitsigns(event.buf)
+        end
       end
     end),
     group = augroup_misc,
@@ -267,16 +313,18 @@ function events.enable()
   })
 
   create_autocmd({'BufEnter', 'BufNew'}, {
-    callback = function() schedule_render_update() end,
+    callback = function()
+      last_render_buf = get_current_buf()
+      schedule_render_update()
+    end,
     group = augroup_render,
   })
 
   create_autocmd(
     {
-      'BufEnter', 'BufWinEnter', 'BufWinLeave', 'BufWritePost',
+      'BufWinEnter', 'BufWinLeave', 'BufWritePost',
       'TabEnter',
       'VimResized',
-      'WinEnter', 'WinLeave',
     },
     {
       callback = vim.schedule_wrap(function() schedule_render_update() end),
@@ -284,9 +332,16 @@ function events.enable()
     }
   )
 
+  create_autocmd({ 'WinEnter', 'WinLeave' }, {
+    callback = vim.schedule_wrap(function() schedule_render_if_buf_changed() end),
+    group = augroup_render,
+  })
+
   create_autocmd('DiagnosticChanged', {
     callback = function(event)
-      schedule_diagnostics_update(event.buf)
+      if diagnostics_enabled() then
+        schedule_diagnostics_update(event.buf)
+      end
     end,
     group = augroup_render,
   })
@@ -300,7 +355,9 @@ function events.enable()
         bufnr = event.data.buffer
       end
 
-      schedule_gitsigns_update(bufnr)
+      if gitsigns_enabled() then
+        schedule_gitsigns_update(bufnr)
+      end
     end),
     group = augroup_render,
     pattern = 'GitSignsUpdate',

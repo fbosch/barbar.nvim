@@ -30,7 +30,7 @@ local tbl_map = vim.tbl_map
 local fs = require('barbar.fs')
 local buffer = require('barbar.buffer')
 local config = require('barbar.config')
-local animate = require('barbar.animate')
+local animate
 local utils = require('barbar.utils')
 local list = require('barbar.utils.list')
 local layout = require('barbar.ui.layout')
@@ -41,6 +41,13 @@ local ERROR = 1
 local WARN = 2
 local INFO = 3
 local HINT = 4
+
+local function get_animate()
+  if animate == nil then
+    animate = require('barbar.animate')
+  end
+  return animate
+end
 
 --------------------------------
 -- Section: Application state --
@@ -200,20 +207,22 @@ function state.close_buffer_animated(bufnr)
     return state.close_buffer(bufnr)
   end
 
+  local anim = get_animate()
+
   local buffer_data = state.get_buffer_data(bufnr)
   local current_width = buffer_data.computed_width or 0
 
   buffer_data.closing = true
   buffer_data.width = current_width
 
-  animate.start(
+  anim.start(
     ANIMATION.CLOSE_DURATION, current_width, 0, vim.v.t_number,
     function(new_width, animation)
       if new_width > 0 and state.data_by_bufnr[bufnr] ~= nil then
         buffer_data.width = new_width
         return state.update_callback()
       end
-      animate.stop(animation)
+      anim.stop(animation)
       state.close_buffer(bufnr, true)
     end)
 end
@@ -226,6 +235,8 @@ local function open_buffer_start_animation(data, bufnr)
   local buffer_data = state.get_buffer_data(bufnr)
   local index = list.index_of(state.buffers_visible, bufnr)
 
+  local anim = get_animate()
+
   buffer_data.computed_width = layout.calculate_width(
     data.buffers.base_widths[index] or
       layout.calculate_buffer_width(state, bufnr, #state.buffers_visible + 1),
@@ -237,7 +248,7 @@ local function open_buffer_start_animation(data, bufnr)
   buffer_data.width = 1
 
   defer_fn(function()
-    animate.start(
+    anim.start(
       ANIMATION.OPEN_DURATION, 1, target_width, vim.v.t_number,
       function(new_width, animation)
         buffer_data.width = animation.running and new_width or nil

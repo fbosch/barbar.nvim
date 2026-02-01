@@ -21,11 +21,7 @@ local state = require('barbar.state')
 --- @class Barbar
 local barbar = {}
 
---- Setup this plugin.
---- @param options? table
---- @return nil
-function barbar.setup(options)
-  -- Create all necessary commands
+local function create_commands()
   create_user_command('BarbarEnable', events.enable, {desc = 'Enable barbar.nvim'})
   create_user_command('BarbarDisable', events.disable, {desc = 'Disable barbar.nvim'})
 
@@ -259,7 +255,12 @@ function barbar.setup(options)
     api.restore_buffer,
     {desc = 'Restore the last recently closed buffer'}
   )
+end
 
+--- Setup this plugin.
+--- @param options? table
+--- @return nil
+function barbar.setup(options)
   -- Setup barbar
   events.on_option_changed(options)
 
@@ -267,6 +268,7 @@ function barbar.setup(options)
   vim.api.nvim_create_autocmd('VimEnter', {
     once = true,
     callback = function()
+      create_commands()
       events.enable()
       set_option('showtabline', 2)
     end,

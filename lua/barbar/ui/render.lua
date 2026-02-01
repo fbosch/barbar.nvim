@@ -27,7 +27,7 @@ local strwidth = vim.api.nvim_strwidth --- @type function
 local tabpagenr = vim.fn.tabpagenr --- @type function
 local win_get_buf = vim.api.nvim_win_get_buf --- @type function
 
-local animate = require('barbar.animate')
+local animate
 local buffer = require('barbar.buffer')
 local config = require('barbar.config')
 -- local fs = require('barbar.fs') -- For debugging purposes
@@ -38,6 +38,13 @@ local nodes = require('barbar.ui.nodes')
 local notify = require('barbar.utils').notify
 local state = require('barbar.state')
 local ANIMATION = require('barbar.constants').ANIMATION
+
+local function get_animate()
+  if animate == nil then
+    animate = require('barbar.animate')
+  end
+  return animate
+end
 
 -- Digits for optional styling of buffer_number and buffer_index.
 local SUPERSCRIPT_DIGITS = { '⁰', '¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹' }
@@ -139,11 +146,13 @@ function render.set_scroll(target)
     return render.update(nil, false)
   end
 
+  local anim = get_animate()
+
   if scroll_animation ~= nil then
-    animate.stop(scroll_animation)
+    anim.stop(scroll_animation)
   end
 
-  scroll_animation = animate.start(
+  scroll_animation = anim.start(
     ANIMATION.SCROLL_DURATION, scroll.current, target, vim.v.t_number,
     set_scroll_tick)
 end
