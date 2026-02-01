@@ -12,8 +12,16 @@ local hlexists = vim.fn.hlexists --- @type function
 local hl = require('barbar.utils.highlight')
 local utils = require('barbar.utils')
 
---- @type boolean, {get_icon: fun(name: string, ext?: string, opts?: {default: nil|boolean}): string, string}
-local ok, web = pcall(require, 'nvim-web-devicons')
+local ok, web
+
+local function ensure_devicons()
+  if ok ~= nil then
+    return ok
+  end
+
+  ok, web = pcall(require, 'nvim-web-devicons')
+  return ok
+end
 
 --- Sets the highlight group used for a type of buffer's file icon
 --- @param buffer_status barbar.buffer.activity.name
@@ -43,14 +51,27 @@ local icon_cache = {}
 --- @class barbar.Icons
 local icons = {}
 
-icons.get_icon = ok and
-  --- @param bufnr integer
-  --- @param buffer_activity barbar.buffer.activity.name
-  --- @return string icon, string highlight_group
-  function(bufnr, buffer_activity)
-    local name = buf_get_name(bufnr)
-    local filetype = buf_get_option(bufnr, 'filetype')
-    local cached = icon_cache[bufnr]
+--- @param bufnr integer
+--- @param buffer_activity barbar.buffer.activity.name
+--- @return string icon, string highlight_group
+function icons.get_icon(bufnr, buffer_activity)
+  if not ensure_devicons() then
+    local invalid_option = utils.markdown_inline_code'icons.filetype.enabled'
+    utils.notify_once(
+      'barbar.nvim: ' .. invalid_option .. ' is set to ' .. utils.markdown_inline_code'true' ..
+        ' but ' .. utils.markdown_inline_code'nvim-web-devicons' .. ' was not found.' ..
+        '\nbarbar.nvim: icons have been disabled. Set ' .. invalid_option .. ' to ' ..
+        utils.markdown_inline_code'false' .. ' or ' .. 'install ' ..
+        utils.markdown_inline_code'nvim-web-devicons' .. 'as a non-optional plugin to prevent this message.',
+      vim.log.levels.WARN
+    )
+
+    return '', 'Buffer' .. buffer_activity .. 'Icon'
+  end
+
+  local name = buf_get_name(bufnr)
+  local filetype = buf_get_option(bufnr, 'filetype')
+  local cached = icon_cache[bufnr]
     if cached and cached.name == name and cached.filetype == filetype then
       local icon_char = cached.icon_char
       local icon_hl = cached.icon_hl
@@ -95,20 +116,7 @@ icons.get_icon = ok and
     }
 
     return icon_char, icon_hl .. buffer_activity
-  end or
-  function(_, buffer_activity)
-    local invalid_option = utils.markdown_inline_code'icons.filetype.enabled'
-    utils.notify_once(
-      'barbar.nvim: ' .. invalid_option .. ' is set to ' .. utils.markdown_inline_code'true' ..
-        ' but ' .. utils.markdown_inline_code'nvim-web-devicons' .. ' was not found.' ..
-        '\nbarbar.nvim: icons have been disabled. Set ' .. invalid_option .. ' to ' ..
-        utils.markdown_inline_code'false' .. ' or ' .. 'install ' ..
-        utils.markdown_inline_code'nvim-web-devicons' .. 'as a non-optional plugin to prevent this message.',
-      vim.log.levels.WARN
-    )
-
-    return '', 'Buffer' .. buffer_activity .. 'Icon'
-  end
+end
 
 --- Re-highlight all of the groups which have been set before. Checks for updated highlight groups.
 --- @return nil
