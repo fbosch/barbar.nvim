@@ -262,10 +262,15 @@ function barbar.setup(options)
 
   -- Setup barbar
   events.on_option_changed(options)
-  events.enable()
 
-  -- Show the tabline
-  set_option('showtabline', 2)
+  -- Show the tabline and enable events after VimEnter
+  vim.api.nvim_create_autocmd('VimEnter', {
+    once = true,
+    callback = function()
+      events.enable()
+      set_option('showtabline', 2)
+    end,
+  })
 end
 
 return barbar
