@@ -46,6 +46,7 @@ local function get_animate()
   return animate
 end
 
+
 -- Digits for optional styling of buffer_number and buffer_index.
 local SUPERSCRIPT_DIGITS = { '⁰', '¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹' }
 local SUBSCRIPT_DIGITS = { '₀', '₁', '₂', '₃', '₄', '₅', '₆', '₇', '₈', '₉' }
@@ -546,7 +547,8 @@ function render.update(update_names, refocus)
     return
   end
 
-  local buffers = layout.hide(state, state.get_updated_buffers(update_names))
+  local should_update_names = update_names or state.consume_deferred_name_updates()
+  local buffers = layout.hide(state, state.get_updated_buffers(should_update_names))
 
   -- Auto hide/show if applicable
   if config.options.auto_hide > -1 then
@@ -587,6 +589,7 @@ function render.update(update_names, refocus)
       vim.log.levels.ERROR
     )
   end
+
 end
 
 state.update_callback = render.update

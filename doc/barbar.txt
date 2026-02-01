@@ -144,6 +144,7 @@ Group              Meaning
     let g:barbar_auto_setup = v:false " Vim script
 <
 
+
 `barbar`.setup({options})                                           *barbar.setup()*
   To configure barbar, you must call this `setup` function. The valid
   {options} are listed below.

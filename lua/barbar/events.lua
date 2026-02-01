@@ -13,6 +13,7 @@ local defer_fn = vim.defer_fn
 local del_autocmd = vim.api.nvim_del_autocmd --- @type function
 local exec_autocmds = vim.api.nvim_exec_autocmds --- @type function
 local get_current_buf = vim.api.nvim_get_current_buf --- @type function
+local bufwinnr = vim.fn.bufwinnr --- @type function
 local get_current_tabpage = vim.api.nvim_get_current_tabpage
 local get_option = vim.api.nvim_get_option --- @type function
 local islist = vim.islist or vim.tbl_islist --- @type function
@@ -25,14 +26,70 @@ local win_is_valid = vim.api.nvim_win_is_valid --- @type function
 local win_get_position = vim.api.nvim_win_get_position --- @type function
 local win_get_width = vim.api.nvim_win_get_width --- @type function
 
-local api = require('barbar.api')
-local bdelete = require('barbar.bbye').bdelete
-local config = require('barbar.config')
-local highlight = require('barbar.highlight') --- @type barbar.Highlight
-local jump_mode = require('barbar.jump_mode')
-local layout = require('barbar.ui.layout')
-local render = require('barbar.ui.render')
-local state = require('barbar.state')
+local api
+local bdelete
+local config
+local highlight
+local jump_mode
+local layout
+local render
+local state
+
+local function get_api()
+  if api == nil then
+    api = require('barbar.api')
+  end
+  return api
+end
+
+local function get_bdelete()
+  if bdelete == nil then
+    bdelete = require('barbar.bbye').bdelete
+  end
+  return bdelete
+end
+
+local function get_config()
+  if config == nil then
+    config = require('barbar.config')
+  end
+  return config
+end
+
+local function get_highlight()
+  if highlight == nil then
+    highlight = require('barbar.highlight')
+  end
+  return highlight
+end
+
+local function get_jump_mode()
+  if jump_mode == nil then
+    jump_mode = require('barbar.jump_mode')
+  end
+  return jump_mode
+end
+
+local function get_layout()
+  if layout == nil then
+    layout = require('barbar.ui.layout')
+  end
+  return layout
+end
+
+local function get_render()
+  if render == nil then
+    render = require('barbar.ui.render')
+  end
+  return render
+end
+
+local function get_state()
+  if state == nil then
+    state = require('barbar.state')
+  end
+  return state
+end
 
 local render_update_pending = false
 local render_update_names = false
@@ -62,7 +119,7 @@ local function schedule_render_update(update_names, refocus)
     local refocus_arg = render_update_refocus
     render_update_names = false
     render_update_refocus = nil
-    render.update(names, refocus_arg)
+    get_render().update(names, refocus_arg)
   end)
 end
 
@@ -76,8 +133,12 @@ local function schedule_render_if_buf_changed()
   schedule_render_update()
 end
 
+local function buffer_is_visible(bufnr)
+  return bufwinnr(bufnr) ~= -1
+end
+
 local function diagnostics_enabled()
-  local diagnostics = config.options.icons.diagnostics
+  local diagnostics = get_config().options.icons.diagnostics
   if diagnostics == nil then
     return false
   end
@@ -92,7 +153,7 @@ local function diagnostics_enabled()
 end
 
 local function gitsigns_enabled()
-  local gitsigns = config.options.icons.gitsigns
+  local gitsigns = get_config().options.icons.gitsigns
   if gitsigns == nil then
     return false
   end
@@ -107,6 +168,7 @@ local function gitsigns_enabled()
 end
 
 local function flush_diagnostics()
+  local state = get_state()
   diagnostic_timer = nil
   for bufnr in pairs(pending_diagnostics) do
     if vim.api.nvim_buf_is_loaded(bufnr) then
@@ -126,6 +188,7 @@ local function schedule_diagnostics_update(bufnr)
 end
 
 local function flush_gitsigns()
+  local state = get_state()
   gitsigns_timer = nil
   for bufnr in pairs(pending_gitsigns) do
     state.update_gitsigns(bufnr)
@@ -184,6 +247,7 @@ end
 --- What to do while dragging the mouse
 --- @return nil
 local function mouse_drag_handler()
+  local config = get_config()
   if not (enabled and config.options.clickable) then
     return
   end
@@ -194,6 +258,10 @@ local function mouse_drag_handler()
   end
 
   local col = pos.screencol
+  local state = get_state()
+  local layout = get_layout()
+  local render = get_render()
+  local api = get_api()
   local data = layout.calculate(state)
 
   local buffers_data = data.buffers
@@ -252,7 +320,7 @@ function events.close_click_handler(buffer)
     buf_call(buffer, function() command('w') end)
     exec_autocmds('BufModifiedSet', {buffer = buffer})
   else
-    bdelete(false, buffer, CLOSE_CLICK_MODS)
+    get_bdelete()(false, buffer, CLOSE_CLICK_MODS)
   end
 end
 
@@ -260,13 +328,15 @@ end
 --- @return nil
 events.disable = schedule_wrap(function()
   events.augroups() -- clear the autocommands
-  render.set_tabline(nil) -- clear the tabline
+  get_render().set_tabline(nil) -- clear the tabline
   enabled = false -- mark as disabled
 end)
 
 --- Start listening and responding to various editor events
 --- @return nil
 function events.enable()
+  local config = get_config()
+  local state = get_state()
   local augroup_misc, augroup_render = events.augroups()
 
   create_autocmd('VimEnter', { callback = state.load_recently_closed, group = augroup_misc })
@@ -275,12 +345,12 @@ function events.enable()
   create_autocmd({'BufNewFile', 'BufReadPost'}, {
     callback = vim.schedule_wrap(function(event)
       if buf_is_valid(event.buf) then
-        jump_mode.assign_next_letter(event.buf)
-        if diagnostics_enabled() then
-          state.update_diagnostics(event.buf)
+        get_jump_mode().assign_next_letter(event.buf)
+        if diagnostics_enabled() and buffer_is_visible(event.buf) then
+          get_state().update_diagnostics(event.buf)
         end
-        if gitsigns_enabled() then
-          state.update_gitsigns(event.buf)
+        if gitsigns_enabled() and buffer_is_visible(event.buf) then
+          get_state().update_gitsigns(event.buf)
         end
       end
     end),
@@ -289,15 +359,15 @@ function events.enable()
 
   create_autocmd({'BufDelete', 'BufWipeout'}, {
     callback = schedule_wrap(function(tbl)
-      jump_mode.unassign_letter_for(tbl.buf)
-      state.push_recently_closed(tbl.file)
+      get_jump_mode().unassign_letter_for(tbl.buf)
+      get_state().push_recently_closed(tbl.file)
       schedule_render_update()
     end),
     group = augroup_render,
   })
 
   create_autocmd('ColorScheme', {
-    callback = highlight.resetup,
+    callback = get_highlight().resetup,
     group = augroup_misc,
   })
 
@@ -315,6 +385,12 @@ function events.enable()
   create_autocmd({'BufEnter', 'BufNew'}, {
     callback = function()
       last_render_buf = get_current_buf()
+      if diagnostics_enabled() then
+        get_state().update_diagnostics(last_render_buf)
+      end
+      if gitsigns_enabled() then
+        get_state().update_gitsigns(last_render_buf)
+      end
       schedule_render_update()
     end,
     group = augroup_render,
@@ -339,7 +415,7 @@ function events.enable()
 
   create_autocmd('DiagnosticChanged', {
     callback = function(event)
-      if diagnostics_enabled() then
+      if diagnostics_enabled() and buffer_is_visible(event.buf) then
         schedule_diagnostics_update(event.buf)
       end
     end,
@@ -355,7 +431,7 @@ function events.enable()
         bufnr = event.data.buffer
       end
 
-      if gitsigns_enabled() then
+      if gitsigns_enabled() and buffer_is_visible(bufnr) then
         schedule_gitsigns_update(bufnr)
       end
     end),
@@ -423,7 +499,7 @@ function events.enable()
               if width ~= widths[ft] then
                 widths[side][ft] = width
                 widths[other_side][ft] = nil
-                api.set_offset(total_widths(side), nil, nil, side, option)
+                get_api().set_offset(total_widths(side), nil, nil, side, option)
               end
             end,
             group = augroup_render,
@@ -439,7 +515,7 @@ function events.enable()
             callback = function()
               if widths[side] then
                 widths[side][ft] = nil
-                api.set_offset(total_widths(side), nil, nil, side, {})
+                get_api().set_offset(total_widths(side), nil, nil, side, {})
               end
               pcall(del_autocmd, autocmd)
             end,
@@ -460,7 +536,7 @@ function events.enable()
   })
 
   create_autocmd('OptionSet', {
-    callback = highlight.resetup,
+    callback = get_highlight().resetup,
     group = augroup_misc,
     pattern = 'background',
   })
@@ -542,7 +618,7 @@ function events.enable()
     ]]
   end)
 
-  render.update()
+  get_render().update()
   enabled = true
 end
 
@@ -558,9 +634,9 @@ function events.main_click_handler(bufnr, _, btn, _)
 
   -- NOTE: in Vimscript this was not `==`, it was a regex compare `=~`
   if btn == 'm' then
-    bdelete(false, bufnr)
+    get_bdelete()(false, bufnr)
   else
-    render.set_current_win_listed_buffer()
+    get_render().set_current_win_listed_buffer()
     set_current_buf(bufnr)
   end
 end
@@ -570,9 +646,10 @@ end
 --- @param user_config? table
 --- @return nil
 function events.on_option_changed(user_config)
+  local config = get_config()
   config.setup(user_config) -- NOTE: must be first `setup` called here
-  highlight.setup()
-  jump_mode.set_letters(config.options.letters)
+  get_highlight().setup()
+  get_jump_mode().set_letters(config.options.letters)
 
   if config.options.clickable and vim.tbl_isempty(handlers) then
     handlers[replace_termcodes('<LeftDrag>', true, true, true)] = mouse_drag_handler

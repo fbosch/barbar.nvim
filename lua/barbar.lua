@@ -261,7 +261,6 @@ end
 --- @param options? table
 --- @return nil
 function barbar.setup(options)
-  -- Setup barbar
   events.on_option_changed(options)
 
   -- Show the tabline and enable events after VimEnter

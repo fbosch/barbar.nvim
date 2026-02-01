@@ -15,17 +15,91 @@ local getchar = vim.fn.getchar --- @type function
 local set_current_buf = vim.api.nvim_set_current_buf --- @type function
 local tolower = vim.fn.tolower
 
-local animate = require('barbar.animate')
-local bdelete = require('barbar.bbye').bdelete
-local buffer = require('barbar.buffer')
-local config = require('barbar.config')
-local fs = require('barbar.fs') --- @type barbar.Fs
-local index_of = require('barbar.utils.list').index_of
-local jump_mode = require('barbar.jump_mode')
-local layout = require('barbar.ui.layout')
+local animate
+local bdelete
+local buffer
+local config
+local fs
+local jump_mode
+local layout
+local list
 local notify = require('barbar.utils').notify
-local render = require('barbar.ui.render')
-local state = require('barbar.state')
+local render
+local state
+
+local function get_animate()
+  if animate == nil then
+    animate = require('barbar.animate')
+  end
+  return animate
+end
+
+local function get_bdelete()
+  if bdelete == nil then
+    bdelete = require('barbar.bbye').bdelete
+  end
+  return bdelete
+end
+
+local function get_buffer()
+  if buffer == nil then
+    buffer = require('barbar.buffer')
+  end
+  return buffer
+end
+
+local function get_config()
+  if config == nil then
+    config = require('barbar.config')
+  end
+  return config
+end
+
+local function get_fs()
+  if fs == nil then
+    fs = require('barbar.fs')
+  end
+  return fs
+end
+
+local function get_jump_mode()
+  if jump_mode == nil then
+    jump_mode = require('barbar.jump_mode')
+  end
+  return jump_mode
+end
+
+local function get_layout()
+  if layout == nil then
+    layout = require('barbar.ui.layout')
+  end
+  return layout
+end
+
+local function get_list()
+  if list == nil then
+    list = require('barbar.utils.list')
+  end
+  return list
+end
+
+local function index_of(...)
+  return get_list().index_of(...)
+end
+
+local function get_render()
+  if render == nil then
+    render = require('barbar.ui.render')
+  end
+  return render
+end
+
+local function get_state()
+  if state == nil then
+    state = require('barbar.state')
+  end
+  return state
+end
 
 local ESC = vim.api.nvim_replace_termcodes('<Esc>', true, false, true)
 
@@ -33,10 +107,13 @@ local ESC = vim.api.nvim_replace_termcodes('<Esc>', true, false, true)
 --- @param fn fun(): nil|boolean
 --- @return nil
 local function pick_buffer_wrap(fn)
+  local jump_mode = get_jump_mode()
   if jump_mode.reinitialize then
     jump_mode.initialize_indexes()
   end
 
+  local state = get_state()
+  local render = get_render()
   state.is_picking_buffer = true
   render.update()
 
@@ -50,6 +127,7 @@ end
 --- @param buffer_number integer
 --- @return nil
 local function notify_buffer_not_found(buffer_number)
+  local state = get_state()
   notify(
     'Current buffer (' .. buffer_number .. ") not found in barbar.nvim's list of buffers: " .. vim.inspect(state.buffers),
     vim.log.levels.ERROR
@@ -60,6 +138,8 @@ end
 --- @param order_func fun(bufnr_a: integer, bufnr_b: integer, to_sort_case: fun(s: string): string): boolean accepts `(integer, integer)` params.
 --- @return fun(bufnr_a: integer, bufnr_b: integer): boolean
 local function with_pin_order(order_func)
+  local config = get_config()
+  local state = get_state()
   local to_sort_case = config.options.sort.ignore_case and tolower or function(s)
     return s
   end
@@ -84,6 +164,9 @@ local api = {}
 --- Close all open buffers, except the current one.
 --- @return nil
 function api.close_all_but_current()
+  local state = get_state()
+  local bdelete = get_bdelete()
+  local render = get_render()
   local current_bufnr = get_current_buf()
 
   for _, buffer_number in ipairs(state.buffers) do
@@ -98,6 +181,10 @@ end
 --- Close all open buffers, except those in visible windows.
 --- @return nil
 function api.close_all_but_visible()
+  local buffer = get_buffer()
+  local state = get_state()
+  local bdelete = get_bdelete()
+  local render = get_render()
   local visible = buffer.activities.Visible
   for _, buffer_number in ipairs(state.buffers) do
     if buffer.get_activity(buffer_number) < visible then
@@ -111,6 +198,9 @@ end
 --- Close all open buffers, except pinned ones.
 --- @return nil
 function api.close_all_but_pinned()
+  local state = get_state()
+  local bdelete = get_bdelete()
+  local render = get_render()
   for _, buffer_number in ipairs(state.buffers) do
     if not state.is_pinned(buffer_number) then
       bdelete(false, buffer_number)
@@ -123,6 +213,9 @@ end
 --- Close all open buffers, except pinned ones or the current one.
 --- @return nil
 function api.close_all_but_current_or_pinned()
+  local state = get_state()
+  local bdelete = get_bdelete()
+  local render = get_render()
   local current_bufnr = get_current_buf()
 
   for _, buffer_number in ipairs(state.buffers) do
@@ -137,6 +230,9 @@ end
 --- Close all buffers which are visually left of the current buffer.
 --- @return nil
 function api.close_buffers_left()
+  local state = get_state()
+  local bdelete = get_bdelete()
+  local render = get_render()
   local idx = index_of(state.buffers, get_current_buf())
   if idx == nil or idx == 1 then
     return
@@ -152,6 +248,9 @@ end
 --- Close all buffers which are visually right of the current buffer.
 --- @return nil
 function api.close_buffers_right()
+  local state = get_state()
+  local bdelete = get_bdelete()
+  local render = get_render()
   local idx = index_of(state.buffers, get_current_buf())
   if idx == nil then
     return
@@ -166,6 +265,7 @@ end
 
 -- Restore last recently closed buffer
 function api.restore_buffer()
+  local state = get_state()
   state.pop_recently_closed()
 end
 
@@ -193,6 +293,7 @@ end
 --- @param index integer
 --- @return nil
 function api.goto_buffer(index)
+  local state = get_state()
   goto_buffer_impl(index, state.buffers)
 end
 
@@ -200,6 +301,7 @@ end
 --- @param index integer
 --- @return nil
 function api.goto_buffer_pinned(index)
+  local state = get_state()
   local buffers =
     vim.tbl_filter(
       function(number)
@@ -215,6 +317,7 @@ end
 --- @param index integer
 --- @return nil
 function api.goto_buffer_unpinned(index)
+  local state = get_state()
   local buffers =
     vim.tbl_filter(
       function(number)
@@ -231,6 +334,8 @@ end
 --- @param steps integer
 --- @return nil
 function api.goto_buffer_relative(steps)
+  local state = get_state()
+  local render = get_render()
   state.get_updated_buffers()
 
   if #state.buffers < 1 then
@@ -261,11 +366,13 @@ local move_animation_data = {
 --- An incremental animation for `move_buffer_animated`.
 --- @return nil
 local function move_buffer_animated_tick(ratio, current_animation)
+  local state = get_state()
+  local render = get_render()
   for _, current_number in ipairs(state.buffers_visible) do
     local current_data = state.get_buffer_data(current_number)
 
     if current_animation.running == true then
-      current_data.position = animate.lerp(
+      current_data.position = get_animate().lerp(
         ratio,
         (move_animation_data.previous_positions or {})[current_number],
         (move_animation_data.next_positions or {})[current_number]
@@ -292,6 +399,10 @@ local MOVE_DURATION = 150
 --- @param to_idx integer the buffer's new index.
 --- @return nil
 local function swap_buffer(from_idx, to_idx)
+  local config = get_config()
+  local state = get_state()
+  local layout = get_layout()
+  local render = get_render()
   to_idx = max(1, min(#state.buffers, to_idx))
   if to_idx == from_idx then
     return
@@ -317,7 +428,7 @@ local function swap_buffer(from_idx, to_idx)
     if start_index == end_index then
       return
     elseif move_animation ~= nil then
-      animate.stop(move_animation)
+      get_animate().stop(move_animation)
     end
 
     local next_positions = layout.calculate_buffers_position_by_buffer_number(state)
@@ -340,7 +451,7 @@ local function swap_buffer(from_idx, to_idx)
     }
 
     move_animation =
-      animate.start(MOVE_DURATION, 0, 1, vim.v.t_float,
+      get_animate().start(MOVE_DURATION, 0, 1, vim.v.t_float,
         function(ratio, current_animation) move_buffer_animated_tick(ratio, current_animation) end)
   end
 
@@ -351,6 +462,8 @@ end
 --- @param idx integer
 --- @return nil
 function api.move_current_buffer_to(idx)
+  local state = get_state()
+  local render = get_render()
   render.update()
 
   if idx == -1 then
@@ -372,6 +485,8 @@ end
 --- @param steps integer
 --- @return nil
 function api.move_buffer(buffer_number, steps)
+  local state = get_state()
+  local render = get_render()
   render.update()
 
   local idx = index_of(state.buffers, buffer_number)
@@ -393,6 +508,8 @@ end
 --- Order the buffers by their buffer number.
 --- @return nil
 function api.order_by_buffer_number()
+  local state = get_state()
+  local render = get_render()
   table_sort(state.buffers, function(a, b) return a < b end)
   render.update()
 end
@@ -400,6 +517,9 @@ end
 --- Order the buffers by their name
 --- @return nil
 function api.order_by_name()
+  local fs = get_fs()
+  local state = get_state()
+  local render = get_render()
   table_sort(state.buffers, with_pin_order(function(a, b, to_sort_case)
     local parts_of_a = fs.split(buf_get_name(a))
     local parts_of_b = fs.split(buf_get_name(b))
@@ -414,6 +534,9 @@ end
 --- Order the buffers by their parent directory.
 --- @return nil
 function api.order_by_directory()
+  local fs = get_fs()
+  local state = get_state()
+  local render = get_render()
   table_sort(state.buffers, with_pin_order(function(a, b, to_sort_case)
     local name_of_a = buf_get_name(a)
     local name_of_b = buf_get_name(b)
@@ -438,6 +561,8 @@ end
 --- Order the buffers by filetype.
 --- @return nil
 function api.order_by_language()
+  local state = get_state()
+  local render = get_render()
   table_sort(state.buffers, with_pin_order(function(a, b, to_sort_case)
     return to_sort_case(buf_get_option(a, 'filetype')) < to_sort_case(buf_get_option(b, 'filetype'))
   end))
@@ -448,6 +573,8 @@ end
 --- Order the buffers by their respective window number.
 --- @return nil
 function api.order_by_window_number()
+  local state = get_state()
+  local render = get_render()
   table_sort(state.buffers, with_pin_order(function(a, b)
     return bufwinnr(buf_get_name(a)) < bufwinnr(buf_get_name(b))
   end))
@@ -458,6 +585,7 @@ end
 --- Activate the buffer pick mode.
 --- @return nil
 function api.pick_buffer()
+  local jump_mode = get_jump_mode()
   pick_buffer_wrap(function()
     local ok, letter = pcall(function() return char(getchar()) end)
     if ok and letter ~= '' then
@@ -477,6 +605,9 @@ end
 --- @param force boolean
 --- @return nil
 function api.pick_buffer_delete(count, force)
+  local bdelete = get_bdelete()
+  local jump_mode = get_jump_mode()
+  local render = get_render()
   local deleted = 0
   pick_buffer_wrap(function()
     local ok, letter = pcall(function() return char(getchar()) end)
@@ -508,6 +639,8 @@ end
 --- @param opts? barbar.config.options.sidebar_filetype
 --- @return nil
 function api.set_offset(width, text, hl, side, opts)
+  local state = get_state()
+  local render = get_render()
   if opts == nil then
     opts = {}
   end
@@ -532,6 +665,8 @@ end
 --- @param buffer_number? integer
 --- @return nil
 function api.toggle_pin(buffer_number)
+  local state = get_state()
+  local render = get_render()
   state.toggle_pin(buffer_number or 0)
   render.update()
 end

@@ -27,14 +27,67 @@ local tbl_contains = vim.tbl_contains
 local tbl_filter = vim.tbl_filter
 local tbl_map = vim.tbl_map
 
-local fs = require('barbar.fs')
-local buffer = require('barbar.buffer')
-local config = require('barbar.config')
+local fs
+local buffer
+local config
 local animate
-local utils = require('barbar.utils')
-local list = require('barbar.utils.list')
-local layout = require('barbar.ui.layout')
-local ANIMATION = require('barbar.constants').ANIMATION
+local utils
+local list
+local layout
+local constants
+
+local function get_fs()
+  if fs == nil then
+    fs = require('barbar.fs')
+  end
+  return fs
+end
+
+local function get_buffer()
+  if buffer == nil then
+    buffer = require('barbar.buffer')
+  end
+  return buffer
+end
+
+local function get_config()
+  if config == nil then
+    config = require('barbar.config')
+  end
+  return config
+end
+
+local function get_utils()
+  if utils == nil then
+    utils = require('barbar.utils')
+  end
+  return utils
+end
+
+local function get_list()
+  if list == nil then
+    list = require('barbar.utils.list')
+  end
+  return list
+end
+
+local function list_index_of(...)
+  return get_list().index_of(...)
+end
+
+local function get_layout()
+  if layout == nil then
+    layout = require('barbar.ui.layout')
+  end
+  return layout
+end
+
+local function get_animation_constants()
+  if constants == nil then
+    constants = require('barbar.constants')
+  end
+  return constants.ANIMATION
+end
 
 local CACHE_PATH = vim.fn.stdpath('cache') .. '/barbar.json'
 local ERROR = 1
@@ -90,6 +143,7 @@ local state = {
   buffers_visible = {},
   data_by_bufnr = {},
   is_picking_buffer = false,
+  defer_name_updates = true,
   offset = {
     left = { align = 'right', hl = 'BufferOffset', text = '', width = 0 },
     right = { align = 'left', hl = 'BufferOffset', text = '', width = 0 },
@@ -97,6 +151,17 @@ local state = {
   recently_closed = {},
   update_callback = function() end,
 }
+
+--- Consume the deferred name update flag
+--- @return boolean
+function state.consume_deferred_name_updates()
+  if state.defer_name_updates then
+    state.defer_name_updates = false
+    return true
+  end
+
+  return false
+end
 
 --- Get the state of the `id`
 --- @param bufnr integer the `bufnr`
@@ -120,6 +185,8 @@ end
 function state.get_buffer_list()
   local result = {}
 
+  local config = get_config()
+  local fs = get_fs()
   local exclude_ft = config.options.exclude_ft
   local exclude_name = config.options.exclude_name
   local hide_extensions = config.options.hide.extensions
@@ -203,11 +270,13 @@ end
 --- Same as `close_buffer`, but animated.
 --- @param bufnr integer
 function state.close_buffer_animated(bufnr)
+  local config = get_config()
   if config.options.animation == false then
     return state.close_buffer(bufnr)
   end
 
   local anim = get_animate()
+  local ANIMATION = get_animation_constants()
 
   local buffer_data = state.get_buffer_data(bufnr)
   local current_width = buffer_data.computed_width or 0
@@ -233,9 +302,11 @@ end
 --- @return nil
 local function open_buffer_start_animation(data, bufnr)
   local buffer_data = state.get_buffer_data(bufnr)
-  local index = list.index_of(state.buffers_visible, bufnr)
+  local index = list_index_of(state.buffers_visible, bufnr)
 
   local anim = get_animate()
+  local layout = get_layout()
+  local ANIMATION = get_animation_constants()
 
   buffer_data.computed_width = layout.calculate_width(
     data.buffers.base_widths[index] or
@@ -260,11 +331,12 @@ end
 --- Open the `new_buffers` in the bufferline.
 --- @return nil
 local function open_buffers(new_buffers)
+  local config = get_config()
   local initial_buffers = #state.buffers
 
   -- Open next to the currently opened tab
   -- Find the new index where the tab will be inserted
-  local new_index = list.index_of(state.buffers, state.last_current_buffer)
+  local new_index = list_index_of(state.buffers, state.last_current_buffer)
   if new_index ~= nil then
     new_index = new_index + 1
   else
@@ -275,8 +347,8 @@ local function open_buffers(new_buffers)
 
   -- Insert the buffers where they go
   for _, new_buffer in ipairs(new_buffers) do
-    if list.index_of(state.buffers, new_buffer) == nil then
-      local actual_index = new_index
+      if list_index_of(state.buffers, new_buffer) == nil then
+        local actual_index = new_index
 
       local should_insert_at_end = config.options.insert_at_end or
         -- We add special buffers at the end
@@ -314,7 +386,7 @@ local function open_buffers(new_buffers)
   -- Update names because they affect the layout
   state.update_names()
 
-  local data = layout.calculate(state)
+  local data = get_layout().calculate(state)
 
   for _, buffer_number in ipairs(new_buffers) do
     open_buffer_start_animation(data, buffer_number)
@@ -420,6 +492,7 @@ end
 --- @param f fun(count: integer, git_status: string, option: barbar.config.options.icons.buffer.git.status) the function to run when a specific git status is enabled and present in the `buffer_number`
 --- @return nil
 function state.for_each_counted_enabled_git_status(bufnr, git, f)
+  local config = get_config()
   -- NOTE: can be extended to check for other git implementations by using e.g. `or buffer_data.gitgutter`
   local count = state.get_buffer_data(bufnr).gitsigns
   if count == nil then
@@ -472,6 +545,7 @@ end
 --- Update the names of all buffers in the bufferline.
 --- @return nil
 function state.update_names()
+  local buffer = get_buffer()
   local buffer_index_by_name = {}
 
   -- Find all names
@@ -504,6 +578,7 @@ end
 --- @param hl? string
 --- @return nil
 function state.set_offset(width, text, hl)
+  local utils = get_utils()
   utils.deprecate(
     utils.markdown_inline_code'bufferline.state.set_offset',
     utils.markdown_inline_code'barbar.api.set_offset'
@@ -520,6 +595,7 @@ end
 --- @return barbar.state.buffer.exported[]
 --- @see barbar.State.restore_buffers
 function state.export_buffers()
+    local fs = get_fs()
     local buffers = {} --- @type barbar.state.buffer.exported[]
 
     for _, bufnr in ipairs(state.buffers) do
@@ -578,6 +654,8 @@ end
 --- Save recently_closed list
 --- @return nil
 function state.save_recently_closed()
+  local fs = get_fs()
+  local utils = get_utils()
   local err_msg = fs.write(CACHE_PATH, json_encode({ recently_closed = state.recently_closed }))
   if err_msg then
     utils.notify(err_msg, vim.log.levels.WARN)
@@ -587,6 +665,8 @@ end
 --- Save recently_closed list
 --- @return nil
 function state.load_recently_closed()
+  local fs = get_fs()
+  local utils = get_utils()
   local err_msg, content = fs.read(CACHE_PATH)
   if err_msg then
     utils.notify(err_msg, vim.log.levels.WARN)
@@ -602,6 +682,7 @@ end
 --- @param closing_number integer
 --- @return nil|integer bufnr of the buffer to focus
 function state.get_focus_on_close(closing_number)
+  local config = get_config()
   local focus_on_close = config.options.focus_on_close
 
   if focus_on_close == 'previous' then
@@ -632,7 +713,7 @@ function state.get_focus_on_close(closing_number)
     return nil -- there are no listed, focusable buffers open
   end
 
-  local closing_index = list.index_of(state.buffers, closing_number)
+  local closing_index = list_index_of(state.buffers, closing_number)
   if closing_index == nil then
     return nil
   end
